@@ -34,3 +34,8 @@ Thumbs.db
 # ── Docker volumes (local dev) ─────────────────────��──────
 data/
 volumes/
+
+# Test artifacts
+.coverage
+coverage.xml
+.pytest_cache/

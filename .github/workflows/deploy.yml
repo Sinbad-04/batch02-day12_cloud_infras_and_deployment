@@ -1,0 +1,88 @@
+# ============================================================
+# CI/CD Pipeline — Day 12 Bonus
+#
+# CI: lint (ruff) + unit tests with coverage (pytest)
+# CD: deploy to Railway on push to main (after CI passes)
+#
+# Required GitHub repo secrets (Settings → Secrets → Actions):
+#   RAILWAY_TOKEN   — Railway project token (railway login → railway tokens)
+# Optional (Render alternative):
+#   RENDER_DEPLOY_HOOK_URL — Render "Deploy Hook" URL
+# ============================================================
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Working directory of the deployable project
+defaults:
+  run:
+    working-directory: 06-lab-complete
+
+jobs:
+  # ──────────────────────────────────────────────────────────
+  # CI — Lint + Test + Coverage
+  # ──────────────────────────────────────────────────────────
+  ci:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff pytest pytest-cov httpx
+
+      - name: Lint (ruff)
+        run: ruff check app/ || true   # report only; remove "|| true" to enforce
+
+      - name: Run tests with coverage
+        env:
+          ENVIRONMENT: test
+          AGENT_API_KEY: test-key
+        run: |
+          pytest --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: 06-lab-complete/coverage.xml
+          if-no-files-found: ignore
+
+  # ──────────────────────────────────────────────────────────
+  # CD — Deploy to Railway (only on push to main, after CI)
+  # ──────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Railway
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service ai-agent --detach
+
+      # --- Alternative: deploy to Render via deploy hook ---
+      # - name: Deploy to Render
+      #   run: curl -fsSL "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
